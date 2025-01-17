@@ -21,14 +21,23 @@ def runpod_handler(job):
         os.makedirs(input_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
 
+        # Retrieve region from env if needed
+        region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+
+        s3 = boto3.client(
+            "s3",
+            region_name=region,
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
+
         input_s3_url = job_input["input_s3_url"]
         parsed_url = urlparse(input_s3_url)
+        # Use the actual bucket and key
         input_bucket = parsed_url.netloc.split('.')[0]
         input_key = parsed_url.path.lstrip('/')
 
         input_file = os.path.join(input_dir, "input.wav")
-        
-        s3 = boto3.client('s3')
         logger.info(f"Downloading from s3://{input_bucket}/{input_key}")
         s3.download_file(input_bucket, input_key, input_file)
 
