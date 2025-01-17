@@ -21,7 +21,6 @@ def runpod_handler(job):
         os.makedirs(input_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
 
-        # Retrieve region from env if needed
         region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
         s3 = boto3.client(
@@ -33,7 +32,7 @@ def runpod_handler(job):
 
         input_s3_url = job_input["input_s3_url"]
         parsed_url = urlparse(input_s3_url)
-        # Use the actual bucket and key
+
         input_bucket = parsed_url.netloc.split('.')[0]
         input_key = parsed_url.path.lstrip('/')
 
