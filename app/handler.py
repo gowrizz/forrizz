@@ -32,13 +32,17 @@ def runpod_handler(job):
 
         input_s3_url = job_input["input_s3_url"]
         parsed_url = urlparse(input_s3_url)
-
         input_bucket = parsed_url.netloc.split('.')[0]
         input_key = parsed_url.path.lstrip('/')
-
+        
+        raw_file = os.path.join(input_dir, "raw_input")
         input_file = os.path.join(input_dir, "input.wav")
+
         logger.info(f"Downloading from s3://{input_bucket}/{input_key}")
-        s3.download_file(input_bucket, input_key, input_file)
+        s3.download_file(input_bucket, input_key, raw_file)
+
+        logger.info("Converting to PCM WAV")
+        subprocess.run(["ffmpeg", "-i", raw_file, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", input_file], check=True)
 
         logger.info("Processing with re")
         subprocess.run(["resemble-enhance", input_dir, output_dir], check=True)
