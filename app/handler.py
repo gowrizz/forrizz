@@ -4,13 +4,21 @@ import boto3
 import shutil
 import logging
 import runpod
+import torch
 from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def check_gpu():
+    if not torch.cuda.is_available():
+        raise RuntimeError("GPU is not available but required for resemble-enhance")
+    logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+
 def runpod_handler(job):
     try:
+        check_gpu()
+        
         job_input = job["input"]
         required_fields = ["input_s3_url", "output_s3_bucket", "output_s3_key"]
         if not all(field in job_input for field in required_fields):
@@ -18,6 +26,10 @@ def runpod_handler(job):
 
         input_dir = "/tmp/input_dir"
         output_dir = "/tmp/output_dir"
+        
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)
+        
         os.makedirs(input_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
 
@@ -33,7 +45,7 @@ def runpod_handler(job):
         parsed_url = urlparse(input_s3_url)
         input_bucket = parsed_url.netloc.split('.')[0]
         input_key = parsed_url.path.lstrip('/')
-
+        
         raw_file = os.path.join(input_dir, "raw_input")
         input_file = os.path.join(input_dir, "input.wav")
         enhanced_file = os.path.join(output_dir, "input_enhanced.wav")
@@ -47,32 +59,40 @@ def runpod_handler(job):
 
         try:
             logger.info("Converting to PCM WAV")
-            subprocess.run(
+            ffmpeg_result = subprocess.run(
                 ["ffmpeg", "-i", raw_file, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", input_file],
                 check=True,
                 capture_output=True,
                 text=True
             )
+            logger.info(f"FFmpeg stdout: {ffmpeg_result.stdout}")
+            logger.info(f"FFmpeg stderr: {ffmpeg_result.stderr}")
         except subprocess.CalledProcessError as e:
             logger.error(f"FFmpeg conversion failed: {e.stderr}")
             return {"error": f"FFmpeg conversion failed: {e.stderr}"}
 
         try:
             logger.info("Processing with resemble-enhance")
+            env = os.environ.copy()
+            env["CUDA_VISIBLE_DEVICES"] = "0"
+            
             result = subprocess.run(
                 ["resemble-enhance", input_dir, output_dir],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                env=env
             )
-            logger.info(f"Resemble-enhance output: {result.stdout}")
-            logger.error(f"Resemble-enhance error: {result.stderr}")
+            logger.info(f"Resemble-enhance stdout: {result.stdout}")
+            if result.stderr:
+                logger.warning(f"Resemble-enhance stderr: {result.stderr}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Resemble-enhance processing failed: {e.stderr}")
             return {"error": f"Resemble-enhance processing failed: {e.stderr}"}
 
         if not os.path.exists(enhanced_file):
             logger.error("Enhanced file was not created by resemble-enhance.")
+            logger.error(f"Output directory contents: {os.listdir(output_dir)}")
             return {"error": "Enhanced file was not created"}
 
         try:
@@ -85,12 +105,11 @@ def runpod_handler(job):
             return {"error": f"S3 upload failed: {str(e)}"}
 
         output_url = f"https://{output_bucket}.s3.amazonaws.com/{output_key}"
-
+        
         shutil.rmtree(input_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)
-
+        
         return {"status": "success", "output_url": output_url}
-
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         return {"error": str(e)}
