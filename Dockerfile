@@ -4,7 +4,8 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y \
-    python3 \
+    python3.10 \
+    python3.10-distutils \
     python3-pip \
     libsndfile1 \
     ffmpeg \
@@ -14,13 +15,16 @@ RUN apt-get update && \
     && git lfs install \
     && rm -rf /var/lib/apt/lists/*
 
-RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN python3 -m pip install --upgrade pip
 
-COPY app/ /app
+RUN pip3 install --no-cache-dir torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
 
-RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 && \
-    pip3 install --no-cache-dir runpod && \
-    pip3 install --no-cache-dir -r requirements.txt && \
-    python3 -c "from resemble_enhance.enhancer.download import download; download()"
+COPY app/requirements.txt /app/
 
-CMD ["python", "-u", "handler.py"]
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+COPY app/ /app/
+
+RUN python3 -c "from resemble_enhance.enhancer.download import download; download()"
+
+CMD ["python3", "-u", "handler.py"]
