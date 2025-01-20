@@ -59,12 +59,14 @@ def runpod_handler(job):
 
         try:
             logger.info("Processing with resemble-enhance")
-            subprocess.run(
+            result = subprocess.run(
                 ["resemble-enhance", input_dir, output_dir],
                 check=True,
                 capture_output=True,
                 text=True
             )
+            logger.info(f"Resemble-enhance output: {result.stdout}")
+            logger.error(f"Resemble-enhance error: {result.stderr}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Resemble-enhance processing failed: {e.stderr}")
             return {"error": f"Resemble-enhance processing failed: {e.stderr}"}
